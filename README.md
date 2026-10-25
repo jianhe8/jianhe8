@@ -2,8 +2,6 @@
 
 一个单文件的柯洁围棋生涯档案：**257 项赛事、1127 局可核对的正式对局、8(9) 个世界冠军**，以及按 2012 版国家队参赛积分条例（马氏积分）逐日重算的积分账户。
 
-整个站点就是一个 `index.html`，无构建、无依赖、无后端，双击即开，也可以直接丢到 GitHub Pages。
-
 ```
 257 项赛事 · 1127 局（767 胜 359 负 1 无胜负）· 8(9) 冠 · 189 个讲解视频
 2008-07-10 — 2026-07-30
@@ -61,22 +59,6 @@ start index.html         # Windows
 ```
 
 没有 npm install，没有 dev server。唯一的外部资源是 `shots/` 下的 6 张条例截图。
-
-## 部署到 GitHub Pages
-
-仓库根目录需要有 `index.html`。`.nojekyll` 用来关掉 Jekyll，避免中文文件名被处理。
-
-```bash
-git clone <your-repo> && cd <your-repo>
-# 把 index.html、.nojekyll、shots/ 放到根目录
-git add . && git commit -m "init" && git push
-```
-
-然后在仓库 **Settings → Pages → Source** 选 `main` / `/ (root)`，等一分钟即可。
-
-也可以直接解压 `dist/kejie-site.zip`，把里面 `kejie-site/` 的内容推到根目录。
-
----
 
 ## 数据维护
 
