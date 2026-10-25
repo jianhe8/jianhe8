@@ -60,6 +60,8 @@ start index.html         # Windows
 
 没有 npm install，没有 dev server。唯一的外部资源是 `shots/` 下的 6 张条例截图。
 
+---
+
 ## 数据维护
 
 数据内嵌在 `index.html` 的 `const D = {...}` 里，由 `tools/kejie.py` 读写。**只用标准库，Python 3.8+ 即可**，不装任何包。
@@ -73,48 +75,75 @@ python tools/kejie.py --help
 ### 常用命令
 
 ```bash
+# 说明：示例里的「某杯」「某九段」「BV1xxxxxxxxx」都是占位，日期一律取已发生的；
+#      只有倒计时那条用未来日期（倒计时本来就是给未来赛事用的）。
+
 # 查看
 python tools/kejie.py stats
 python tools/kejie.py list --year 2026
 python tools/kejie.py show 第16届春兰杯
 
-# 新赛事（自动推断级别、自动判「进行中」）
-python tools/kejie.py guess-tier "第2届棋仙战世界围棋公开赛预选"
-python tools/kejie.py add-tour "第2届棋仙战" --start 2026-11-02 --end 2026-11-06
+# 新赛事（自动推断级别，并按日期自动判「进行中 / 待补结果」）
+python tools/kejie.py guess-tier "第1届某杯世界围棋公开赛预选"
+python tools/kejie.py add-tour "第1届某杯世界围棋公开赛" --start 2024-03-01 --end 2024-03-05
 
 # 加一局（自动延长赛期、重算战绩）
-python tools/kejie.py add-game 第16届春兰杯 --date 2026-12-07 --opp 申真谞 \
+python tools/kejie.py add-game 第16届春兰杯 --date 2026-05-26 --opp 某九段 \
     --color B --result win --label 八强战 --result-text "黑中盘胜"
 
 # 改单局结果（超时 / 判负等）
 python tools/kejie.py set-game-result 第26届农心辛拉面杯 \
     --date 2024-09-07 --opp 金明训 --result "黑超时胜"
 
+# 挂棋谱（写进内嵌棋谱库 + 登记映射）
+python tools/kejie.py add-sgf 第25届应氏杯世界青少年围棋锦标赛 \
+    --date 2008-07-10 --opp 一力辽 --file game.sgf
+
 # 收尾未完赛 / 删重复局
-python tools/kejie.py set-result 第16届春兰杯 八强
+python tools/kejie.py set-result "第1届某杯世界围棋公开赛" 四强
 python tools/kejie.py del-game 2012年中国段位赛 --date 2012-07-18 --opp 吴树浩 \
     --label "2012年中国段位赛"
 
 # 视频：挂到具体对局 / 某赛事 / 网棋组
-python tools/kejie.py add-video --bvid BV1hVH56jE5E --title "..." --date 2026-10-25 --net
-python tools/kejie.py add-video --tour 王中王 --bvid BVxxxx --title "..."
-python tools/kejie.py add-video --game "2026-05-25|福冈航太朗" --bvid BVxxxx --title "..."
+python tools/kejie.py add-video --bvid BV1xxxxxxxxx --title "..." --date 2026-10-09 --net
+python tools/kejie.py add-video --tour 王中王 --bvid BV1xxxxxxxxx --title "..."
+python tools/kejie.py add-video --game "2026-05-25|福冈航太朗" --bvid BV1xxxxxxxxx --title "..."
 
-# 倒计时
+# 倒计时（唯一使用未来日期的示例）
 python tools/kejie.py list-countdown
-python tools/kejie.py add-countdown "棋仙战 · 预选" 2026-11-02 --note "世界棋仙战预选"
+python tools/kejie.py add-countdown "棋仙战 · 预选" 2026-11-02 --note "第 2 届世界围棋棋仙战 预选"
+
+# 一言（首页随机语录）
+python tools/kejie.py list-quotes
+python tools/kejie.py add-quote "我柯洁在棋上什么大风大浪没见过？" --src "2016 · 微博"
+python tools/kejie.py del-quote 12            # 按序号
+python tools/kejie.py del-quote 大风大浪        # 或按引文片段
 
 # 体检
 python tools/kejie.py validate          # 有 --strict 才把「同日重复对手」算错误
 python tools/kejie.py sync              # 重算战绩、排序、对齐计数
 ```
 
+### 加棋谱（SGF）
+
+棋谱不是独立文件，而是压进 `index.html` 的一个 gzip + base64 块（`const SGFZ`，当前 **1009 局 / 约 461 KB**）。`add-sgf` 一次做三件事：
+
+1. 把 SGF 写进棋谱库（不给 `--id` 就自动分配，默认取现有最大 id + 1）
+2. 在 `D.gl` 里登记 `"日期|对手" → id`
+3. 回写该局的 `id` 字段
+
+之后时间线上那一行就会出现「谱」按钮，点开是交互式棋盘（前进 / 后退 / 跳转 / 自动播放）。
+
+SGF 需是标准格式（以 `(;` 开头），工具会数一遍手数做基本校验。同一局已有棋谱时，不加 `--id` 会**覆盖原条目**；要换新 id 就显式给 `--id`（配 `--force`）。
+
+> 注意：每加一局，`index.html` 会增大几 KB。重压缩用的是 gzip -9，通常比原块还小一点。
+
 ### 边界情况怎么处理
 
 | 场景 | 行为 |
 | --- | --- |
 | 王中王算什么级别 | `tier-rules.json` 里 override 成「国内头衔战」，不被「争霸赛」带偏 |
-| 棋仙战预选 | 规则顺序保证「选拔 / 预选」先于「世界大赛名」命中 |
+| 带「预选 / 选拔」的赛事 | 规则顺序保证「选拔 / 预选」先于「世界大赛名」命中，不会被判成正赛 |
 | 同名赛事歧义 | 输入「春兰杯」会列出 6 届让你选序号，不瞎猜 |
 | 未完赛的后续 | `add-game` 自动把 `end` 往后延并重算战绩，`set-result` 收尾 |
 | 缺棋谱号 | 只警告，不影响入档；之后可补 `--id` |
@@ -168,7 +197,7 @@ python tools/kejie.py sync              # 重算战绩、排序、对齐计数
 }
 ```
 
-其余顶层键：`entries`（59 条积分记录）、`costs`（33 条扣分记录）、`bili_groups`（72 组 / 189 个视频）、`countdowns`、`grace`、`gl`（对局 → 星阵 id 映射）、`verify_*`（校验结果快照）。
+其余顶层键：`entries`（59 条积分记录）、`costs`（33 条扣分记录）、`bili_groups`（72 组 / 189 个视频）、`quotes`（35 条一言，`{t, s}`）、`countdowns`、`grace`、`gl`（对局 → 星阵 id 映射）、`verify_*`（校验结果快照）。
 
 ---
 
@@ -194,7 +223,7 @@ python tools/kejie.py sync              # 重算战绩、排序、对齐计数
 .
 ├── index.html              # 站点本体（单文件，数据内嵌）
 ├── shots/                  # 条例截图 rule1-6.png
-├── .nojekyll               # GitHub Pages 用
+├── .nojekyll               # 关闭 Jekyll 处理
 ├── tools/
 │   ├── kejie.py            # 数据维护 CLI
 │   ├── tier-rules.json     # 级别推断规则

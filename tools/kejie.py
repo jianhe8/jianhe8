@@ -34,7 +34,9 @@
 """
 
 import argparse
+import base64
 import datetime
+import gzip
 import json
 import os
 import re
@@ -641,6 +643,137 @@ def cmd_del_countdown(a):
 
 # ---------------------------------------------------------------- 校验
 
+SGFZ_RE = re.compile(r"const SGFZ = '([A-Za-z0-9+/=]+)';")
+
+
+def _sgf_db(doc):
+    """解出内嵌棋谱库：{星阵id: sgf文本}。"""
+    m = SGFZ_RE.search(doc.text)
+    if not m:
+        die("找不到内嵌棋谱块 `const SGFZ = '...'`")
+    try:
+        db = json.loads(gzip.decompress(base64.b64decode(m.group(1))).decode("utf-8"))
+    except Exception as e:
+        die("棋谱块解压失败：%s" % e)
+    return m, db
+
+
+def _sgf_put(doc, m, db):
+    """把棋谱库压回去，替换 doc.text 里的 base64。"""
+    raw = json.dumps(db, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    b64 = base64.b64encode(gzip.compress(raw, 9)).decode("ascii")
+    doc.text = doc.text[:m.start(1)] + b64 + doc.text[m.end(1):]
+    return len(b64)
+
+
+def cmd_add_sgf(a):
+    """给某一局挂上 SGF（写进内嵌棋谱库 + 登记 gl 映射）。"""
+    doc = Doc(a.html)
+    t = find_tour(doc.D, a.tour)
+    hits = [g for g in t.get("games", [])
+            if g.get("date") == a.date and g.get("opp") == a.opp]
+    if not hits:
+        die("找不到对局：%s 对 %s" % (a.date, a.opp))
+    if len(hits) > 1:
+        print("匹配到 %d 局，请加 --label 区分：" % len(hits))
+        for g in hits:
+            print("  %s 执%s %s" % (g["date"], g.get("color"), g.get("label")))
+        sys.exit(3)
+    g = hits[0]
+
+    if not os.path.exists(a.file):
+        die("找不到 SGF 文件：%s" % a.file)
+    with open(a.file, encoding="utf-8", errors="replace") as f:
+        sgf = f.read().strip()
+    if "(;" not in sgf:
+        die("这不像 SGF：开头没有 `(;`")
+    nmv = len(re.findall(r";\s*[BW]\[[a-z]{0,2}\]", sgf))
+    if nmv < 2:
+        die("SGF 里只识别到 %d 手，检查一下文件" % nmv)
+
+    m, db = _sgf_db(doc)
+    key = "%s|%s" % (g["date"], g["opp"])
+    old = (doc.D.get("gl") or {}).get(key)
+
+    if a.id:
+        gid = str(a.id)
+        if gid in db and not a.force:
+            die("棋谱库里已有 id=%s，换个 --id 或加 --force 覆盖" % gid)
+    elif old is not None:
+        gid = str(old)          # 这局本来就登记过，直接覆盖原条目
+    else:
+        nums = [int(k) for k in db if k.isdigit()]
+        gid = str(max(nums) + 1 if nums else 1)
+
+    db[gid] = sgf
+    size = _sgf_put(doc, m, db)
+
+    doc.D.setdefault("gl", {})[key] = int(gid)
+    g["id"] = int(gid)
+
+    ok("%s 对 %s：已挂棋谱 id=%s（%d 手，%d 字符）" % (g["date"], g["opp"], gid, nmv, len(sgf)))
+    print("  棋谱库 %d 局，压缩后 base64 %.0f KB" % (len(db), size / 1024))
+    if old is not None and str(old) != gid:
+        print("  原登记 id=%s 已被替换" % old)
+    doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-sgf")
+
+
+def cmd_list_quotes(a):
+    doc = Doc(a.html)
+    qs = doc.D.get("quotes", [])
+    if not qs:
+        print("（暂无一言）")
+        return
+    for i, q in enumerate(qs):
+        print("[%2d] %s" % (i, q.get("t", "")))
+        print("      —— %s" % (q.get("s") or "（无出处）"))
+    print("\n共 %d 条" % len(qs))
+
+
+def cmd_add_quote(a):
+    doc = Doc(a.html)
+    qs = doc.D.setdefault("quotes", [])
+    t = (a.text or "").strip()
+    if not t:
+        die("引文不能为空")
+    for i, q in enumerate(qs):
+        if q.get("t") == t:
+            die("这条一言已存在（第 %d 条）" % i)
+    if not a.src:
+        warn("未给 --src，出处会显示成空")
+    qs.append({"t": t, "s": a.src or ""})
+    if a.sort:
+        qs.sort(key=lambda x: x.get("s", ""))
+    ok("已加入一言（现 %d 条）：%s" % (len(qs), t[:44]))
+    doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-quote")
+
+
+def cmd_del_quote(a):
+    doc = Doc(a.html)
+    qs = doc.D.get("quotes", [])
+    if not qs:
+        die("暂无一言")
+    sel = (a.sel or "").strip()
+    if sel.isdigit():
+        i = int(sel)
+        if not 0 <= i < len(qs):
+            die("序号 %d 越界（0..%d）" % (i, len(qs) - 1))
+        removed = qs.pop(i)
+    else:
+        hits = [q for q in qs if sel in q.get("t", "")]
+        if not hits:
+            die("没有包含 %r 的一言" % sel)
+        if len(hits) > 1:
+            print("匹配到 %d 条，请用序号删除：" % len(hits))
+            for q in hits:
+                print("  [%d] %s" % (qs.index(q), q.get("t", "")[:50]))
+            sys.exit(3)
+        removed = hits[0]
+        qs.remove(removed)
+    ok("已删除一言（剩 %d 条）：%s" % (len(qs), removed.get("t", "")[:44]))
+    doc.save(dry=a.dry_run, backup=not a.no_backup, note="del-quote")
+
+
 def cmd_validate(a):
     doc = Doc(a.html)
     D = doc.D
@@ -699,6 +832,21 @@ def cmd_validate(a):
     if D.get("bili_total") and D["bili_total"] != total_items:
         warns.append("bili_total=%d 与实际视频数 %d 不符（页面「共 N 个」会不准）"
                      % (D["bili_total"], total_items))
+
+    # 一言
+    qs = D.get("quotes") or []
+    if len(qs) < 2:
+        warns.append("一言只有 %d 条，随机换句至少需要 2 条" % len(qs))
+    seen_q = {}
+    for i, q in enumerate(qs):
+        t = (q.get("t") or "").strip()
+        if not t:
+            errs.append("一言第 %d 条内容为空" % i)
+        if not (q.get("s") or "").strip():
+            warns.append("一言第 %d 条没有出处：%s" % (i, t[:20]))
+        if t in seen_q:
+            errs.append("一言重复（第 %d 与第 %d 条）：%s" % (seen_q[t], i, t[:24]))
+        seen_q[t] = i
 
     # verify_summary 是否过期
     vs = D.get("verify_summary") or {}
@@ -869,6 +1017,31 @@ def build_parser():
     sp.add_argument("name")
     add_common(sp)
     sp.set_defaults(func=cmd_del_countdown)
+
+    sp = sub.add_parser("add-sgf", help="给某局挂 SGF 棋谱")
+    sp.add_argument("tour")
+    sp.add_argument("--date", required=True)
+    sp.add_argument("--opp", required=True)
+    sp.add_argument("--file", required=True, help="SGF 文件路径")
+    sp.add_argument("--id", type=int, help="星阵棋谱号，不给则自动分配")
+    sp.add_argument("--force", action="store_true", help="允许覆盖已有 id")
+    add_common(sp)
+    sp.set_defaults(func=cmd_add_sgf)
+
+    sp = sub.add_parser("list-quotes", help="列出一言")
+    sp.set_defaults(func=cmd_list_quotes)
+
+    sp = sub.add_parser("add-quote", help="新增一条一言")
+    sp.add_argument("text")
+    sp.add_argument("--src", default="", help="出处，如「2020.1 · 《君品谈》」")
+    sp.add_argument("--sort", action="store_true", help="按出处排序后写入")
+    add_common(sp)
+    sp.set_defaults(func=cmd_add_quote)
+
+    sp = sub.add_parser("del-quote", help="删除一言（按序号或引文片段）")
+    sp.add_argument("sel")
+    add_common(sp)
+    sp.set_defaults(func=cmd_del_quote)
 
     sp = sub.add_parser("validate", help="一致性校验")
     sp.add_argument("--strict", action="store_true", help="把「同日重复对手」也算错误")
