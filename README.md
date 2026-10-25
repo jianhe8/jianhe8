@@ -97,8 +97,8 @@ python tools/kejie.py list --year 2026
 python tools/kejie.py show 第16届春兰杯
 
 # 新赛事（自动推断级别、自动判「进行中」）
-python tools/kejie.py guess-tier "第1届棋仙战世界围棋公开赛预选"
-python tools/kejie.py add-tour "第1届棋仙战" --start 2026-11-02 --end 2026-11-06
+python tools/kejie.py guess-tier "第2届棋仙战世界围棋公开赛预选"
+python tools/kejie.py add-tour "第2届棋仙战" --start 2026-11-02 --end 2026-11-06
 
 # 加一局（自动延长赛期、重算战绩）
 python tools/kejie.py add-game 第16届春兰杯 --date 2026-12-07 --opp 申真谞 \

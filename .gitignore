@@ -1,0 +1,14 @@
+# kejie.py 每次写入 index.html 前自动生成的备份
+index.backup.*.html
+
+# 打包产物
+dist/
+
+# 临时文件（截图、预览页、探针）
+tmp/
+__pycache__/
+*.pyc
+
+# 系统
+.DS_Store
+Thumbs.db
