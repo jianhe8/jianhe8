@@ -1529,13 +1529,22 @@ $('lightbox').onclick = e => e.currentTarget.classList.remove('on');
 function openTab(name, push){
   const btn = document.querySelector(`nav.tabs button[data-tab="${name}"]`);
   if (!btn) return;
+  const already = btn.classList.contains('on');   // 点的是当前已选中的 tab
   document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
   btn.classList.add('on');
-  $('p-'+name).classList.add('on');
+  const panel = $('p-'+name);
+  panel.classList.add('on');
   if (name==='curve') resize();
   if (push && location.hash !== '#'+name) history.replaceState(null,'','#'+name);
-  window.scrollTo({top:0,behavior:'instant'});
+  /* 切 tab 只滚到面板顶部（让开 sticky 导航的高度），不再跳回页面最顶端；
+     点当前 tab 完全不滚动，免得在长列表里被拽走。 */
+  if (push && !already){
+    const nav = document.querySelector('nav.tabs');
+    const y = panel.getBoundingClientRect().top + window.pageYOffset
+            - (nav ? nav.offsetHeight : 0) - 12;
+    window.scrollTo({top: Math.max(0, y), behavior:'instant'});
+  }
 }
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>openTab(b.dataset.tab,true));
 const initial = (location.hash||'').replace('#','');
