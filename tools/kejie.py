@@ -7,30 +7,50 @@
 保证站点始终是「单文件、可直接双击打开」。
 
 设计目标：易操作 + 覆盖边界情况
-  * 新比赛       -> add-tour（自动推断 tier、自动判「进行中」）
+  * 新比赛       -> add-tour（自动推断 tier、按日期判「进行中 / 待补结果」）
   * 王中王类型   -> tier-rules.json 里的 overrides 显式覆盖
   * 未完赛后续   -> add-game 自动延长 end、重算战绩；再 set-result 收尾
-  * 讲解视频     -> add-video --tour / --game / --group / --net
-  * 明玥新视频   -> add-video --bvid BVxxxx --net
+  * 讲解视频     -> add-video --tour / --game / --group / --net；del-video 反向删除
+  * 明玥新视频   -> add-video --bvid BV1xxxxxxxxx --net
   * 网棋         -> --net 直接进「野狐网棋 · 网络对局」分组
   * 对手志       -> 页面运行时由对局实时聚合，加完对局自动更新，无需额外处理
+  * 派生计数     -> 每次写操作都会自动 recount，bili_total 不会和实际条数脱节
 
 每次写入前自动备份为 index.backup.<时间戳>.html，可随时回滚。
 
-用法示例：
-  python tools/kejie.py list --year 2026
-  python tools/kejie.py show 春兰杯
-  python tools/kejie.py guess-tier "第1届棋仙战世界围棋公开赛预选"
-  python tools/kejie.py add-tour "第1届棋仙战" --start 2026-11-02 --end 2026-11-06
-  python tools/kejie.py add-game 春兰杯 --date 2026-12-07 --opp 申真谞 --color B --result win --label 八强战
-  python tools/kejie.py set-result 春兰杯 八强
-  python tools/kejie.py add-video --bvid BV1hVH56jE5E --net --title "..." --date 2026-10-25
-  python tools/kejie.py add-video --tour 王中王 --bvid BVxxxx --title "..."
-  python tools/kejie.py add-video --game "2026-05-25|申真谞" --bvid BVxxxx --title "..."
-  python tools/kejie.py merge-groups 其他对局 野狐网棋
-  python tools/kejie.py add-countdown "棋仙战 · 预选" 2026-11-02 --note "世界棋仙战预选"
-  python tools/kejie.py validate
+用法示例（「某杯」「某九段」「BV1xxxxxxxxx」都是占位，日期一律取已发生的；
+只有倒计时那条用未来日期）：
+
+  # 查看
   python tools/kejie.py stats
+  python tools/kejie.py list --year 2026
+  python tools/kejie.py show 第16届春兰杯
+
+  # 新赛事
+  python tools/kejie.py guess-tier "第1届某杯世界围棋公开赛预选"
+  python tools/kejie.py add-tour "第1届某杯世界围棋公开赛" --start 2024-03-01 --end 2024-03-05
+
+  # 对局
+  python tools/kejie.py add-game 第16届春兰杯 --date 2026-05-26 --opp 某九段 --color B --result win --label 八强战
+  python tools/kejie.py set-game-result 第26届农心辛拉面杯 --date 2024-09-07 --opp 金明训 --result "黑超时胜"
+  python tools/kejie.py set-result "第1届某杯世界围棋公开赛" 四强
+  python tools/kejie.py del-game 2012年中国段位赛 --date 2012-07-18 --opp 吴树浩 --label "2012年中国段位赛"
+
+  # 棋谱 / 视频 / 一言
+  python tools/kejie.py add-sgf 第25届应氏杯世界青少年围棋锦标赛 --date 2008-07-10 --opp 一力辽 --file game.sgf
+  python tools/kejie.py add-video --bvid BV1xxxxxxxxx --title "..." --date 2026-10-09 --net
+  python tools/kejie.py add-video --tour 王中王 --bvid BV1xxxxxxxxx --title "..."
+  python tools/kejie.py add-video --game "2026-05-25|福冈航太朗" --bvid BV1xxxxxxxxx --title "..."
+  python tools/kejie.py del-video BV1xxxxxxxxx
+  python tools/kejie.py add-quote "我柯洁在棋上什么大风大浪没见过？" --src "2016 · 微博"
+
+  # 倒计时（唯一用未来日期的示例）
+  python tools/kejie.py add-countdown "棋仙战 · 预选" 2026-11-02 --note "第 2 届世界围棋棋仙战 预选"
+
+  # 体检 / 重算
+  python tools/kejie.py validate --strict
+  python tools/kejie.py sync
+  python tools/recalc-costs.py --by-start     # 积分口径改动后重算扣分链
 """
 
 import argparse
@@ -67,7 +87,10 @@ def setup_stdout():
 
 
 def die(msg, code=2):
+    # 先把 stdout 冲掉，否则「候选列表」会被 stderr 的报错插到前面去
+    sys.stdout.flush()
     print("✗ " + msg, file=sys.stderr)
+    sys.stderr.flush()
     sys.exit(code)
 
 
@@ -360,6 +383,7 @@ def cmd_add_tour(a):
     ok("新增赛事：%s  [%s]  %s ~ %s  结果=%s" % (a.name, tier, t["start"], t["end"], result))
     print("  tier 依据：%s" % why)
     print("  当前序号：%d" % doc.tours.index(t))
+    recount(doc.D)
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-tour")
 
 
@@ -405,6 +429,7 @@ def cmd_add_game(a):
     if a.result_text == "" and not void:
         warn("未提供 --result-text（如「黑中盘胜」），对局明细会空着这一列")
     sync_group_sub(doc, t)
+    recount(doc.D)
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-game")
 
 
@@ -435,6 +460,7 @@ def cmd_del_game(a):
     for g in removed:
         print("  - %s 执%s  %s" % (g["date"], g.get("color"), g.get("label")))
     print("  当前战绩：%d 胜 %d 负（共 %d 局）" % (t["wins"], t["losses"], len(keep)))
+    recount(doc.D)
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="del-game")
 
 
@@ -471,6 +497,35 @@ def cmd_set_result(a):
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="set-result")
 
 
+BV_RE = re.compile(r"/video/(BV[0-9A-Za-z]{10})")
+
+
+def bvid_of(it):
+    """取条目的 bvid。
+
+    历史数据里挂在「对局」上的视频只有 url、没有 bvid 字段（分组里的都有），
+    只按 bvid 去重 / 匹配会漏掉这 150 多条，所以统一从链接里反解。
+    """
+    if it.get("bvid"):
+        return it["bvid"]
+    m = BV_RE.search(it.get("url") or "")
+    return m.group(1) if m else ""
+
+
+def recount(D):
+    """重算派生计数。
+
+    任何会改变「视频 / 赛事 / 对局」数量的写操作都必须调用它，
+    否则 bili_total 之类的手工维护字段会悄悄和真实数量脱节
+    （页面上「共 N 个」就会不准）。
+    """
+    D["bili_total"] = sum(len(g.get("items", [])) for g in D.get("bili_groups", []))
+    vs = D.get("verify_summary")
+    if isinstance(vs, dict):
+        vs["tours"] = len(D.get("tours", []))
+        vs["games"] = sum(len(t.get("games", [])) for t in D.get("tours", []))
+
+
 def cmd_set_group(a):
     doc = Doc(a.html)
     g = find_group(doc.D, a.group)
@@ -490,20 +545,22 @@ def cmd_merge_groups(a):
     dst = find_group(doc.D, a.dst)
     if src is dst:
         die("源与目标相同")
-    have = {it.get("bvid") for it in dst.get("items", []) if it.get("bvid")}
+    have = {bvid_of(it) for it in dst.get("items", []) if bvid_of(it)}
     moved = skipped = 0
     for it in list(src.get("items", [])):
-        if it.get("bvid") and it["bvid"] in have:
+        bv = bvid_of(it)
+        if bv and bv in have:
             skipped += 1
             continue
         dst.setdefault("items", []).append(it)
-        if it.get("bvid"):
-            have.add(it["bvid"])
+        if bv:
+            have.add(bv)
         moved += 1
     dst["items"].sort(key=lambda x: x.get("date", ""))
     doc.groups.remove(src)
     ok("合并「%s」-> 「%s」：移入 %d 个，去重跳过 %d 个" % (src["name"], dst["name"], moved, skipped))
     print("  源分组已删除；目标现有 %d 个视频" % len(dst["items"]))
+    recount(doc.D)
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="merge-groups")
 
 
@@ -514,11 +571,17 @@ def cmd_add_video(a):
     bvid = a.bvid.strip()
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         warn("bvid 格式不像标准 BV 号：%s" % bvid)
-    # 全局去重
+    # 全局去重（对局上的老数据没有 bvid 字段，靠 url 反解）
     for g in doc.groups:
         for it in g.get("items", []):
-            if it.get("bvid") == bvid:
+            if bvid_of(it) == bvid:
                 die("该视频已在分组「%s」里：%s" % (g["name"], it.get("title", "")))
+    for t in doc.tours:
+        for gm in t.get("games", []):
+            for it in gm.get("bili", []):
+                if bvid_of(it) == bvid:
+                    die("该视频已挂在对局 %s 对 %s 上：%s"
+                        % (gm["date"], gm["opp"], it.get("title", "")))
 
     item = {
         "bvid": bvid,
@@ -535,16 +598,21 @@ def cmd_add_video(a):
         if "|" not in a.game:
             die('--game 格式为 "YYYY-MM-DD|对手名"')
         dstr, opp = a.game.split("|", 1)
-        found = None
-        for t in doc.tours:
-            for g in t.get("games", []):
-                if g.get("date") == dstr and g.get("opp") == opp:
-                    found = g
-        if not found:
+        hits = [(t, g) for t in doc.tours for g in t.get("games", [])
+                if g.get("date") == dstr and g.get("opp") == opp]
+        if not hits:
             die("找不到对局：%s 对 %s" % (dstr, opp))
+        if len(hits) > 1:
+            # 同一天同一对手可能出现在多项赛事里（如同时打两个赛事）
+            print("该日期与对手匹配到 %d 局，无法确定挂哪一盘：" % len(hits))
+            for t, g in hits:
+                print("  %s ｜ %s ｜ 执%s" % (t["name"], g.get("label", ""), g.get("color", "")))
+            die("请改用 --tour / --group 指定，或直接编辑具体分组")
+        t0, found = hits[0]
         item["why"] = a.why or "讲解"
         found.setdefault("bili", []).append(item)
-        ok("已挂到对局 %s 对 %s" % (dstr, opp))
+        ok("已挂到对局 %s 对 %s（%s）" % (dstr, opp, t0["name"]))
+        recount(doc.D)
         doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-video")
         return
 
@@ -564,6 +632,7 @@ def cmd_add_video(a):
         g.setdefault("items", []).append(item)
         g["items"].sort(key=lambda x: x.get("date", ""))
         ok("已加入分组「%s」（现 %d 个）" % (g["name"], len(g["items"])))
+        recount(doc.D)
         doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-video")
         return
 
@@ -586,7 +655,43 @@ def cmd_add_video(a):
     g.setdefault("items", []).append(item)
     g["items"].sort(key=lambda x: x.get("date", ""))
     ok("已加入分组「%s」（现 %d 个）" % (g["name"], len(g["items"])))
+    recount(doc.D)
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="add-video")
+
+
+def cmd_del_video(a):
+    """按 bvid 或标题片段删掉一条视频（分组里的，或挂在某局上的）。"""
+    doc = Doc(a.html)
+    sel = (a.sel or "").strip()
+    if not sel:
+        die("请给出 bvid 或标题片段")
+
+    hits = []   # (容器, 索引, item, 位置说明)
+    for g in doc.groups:
+        for i, it in enumerate(g.get("items", [])):
+            if bvid_of(it) == sel or sel in (it.get("title") or ""):
+                hits.append((g["items"], i, it, "分组「%s」" % g["name"]))
+    for t in doc.tours:
+        for gm in t.get("games", []):
+            for i, it in enumerate(gm.get("bili", [])):
+                if bvid_of(it) == sel or sel in (it.get("title") or ""):
+                    hits.append((gm["bili"], i, it,
+                                 "对局 %s 对 %s（%s）" % (gm["date"], gm["opp"], t["name"])))
+
+    if not hits:
+        die("没有匹配的视频：%r" % sel)
+    if len(hits) > 1 and not a.all:
+        print("匹配到 %d 条（同一条视频可能既在分组里、又挂在对局上），加 --all 一起删：" % len(hits))
+        for _, _, it, where in hits:
+            print("  %s ｜ %s ｜ %s" % (bvid_of(it) or "?", (it.get("title") or "")[:40], where))
+        sys.exit(3)
+
+    for arr, i, it, where in sorted(hits, key=lambda x: -x[1]):
+        del arr[i]
+        print("  - %s ｜ %s ｜ %s" % (bvid_of(it) or "?", (it.get("title") or "")[:40], where))
+    ok("已删除 %d 条视频" % len(hits))
+    recount(doc.D)
+    doc.save(dry=a.dry_run, backup=not a.no_backup, note="del-video")
 
 
 def sync_group_sub(doc, t):
@@ -819,13 +924,27 @@ def cmd_validate(a):
     for g in doc.groups:
         for it in g.get("items", []):
             total_items += 1
-            bv = it.get("bvid")
+            bv = bvid_of(it)
             if bv:
                 if bv in seen_bv:
                     errs.append("视频 %s 同时出现在「%s」和「%s」" % (bv, seen_bv[bv], g["name"]))
                 seen_bv[bv] = g["name"]
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", it.get("date", "")):
-                errs.append("「%s」里 %s 日期非法：%r" % (g["name"], bv, it.get("date")))
+                errs.append("「%s」里 %s 日期非法：%r" % (g["name"], bv or "?", it.get("date")))
+    # 对局上挂的视频单独查重。
+    # 注意：同一条视频「既在赛事分组里、又挂到具体对局」是有意的双链接，不算重复；
+    # 只有「同一容器内出现两次」才是错。
+    seen_gv = {}
+    for t in doc.tours:
+        for gm in t.get("games", []):
+            for it in gm.get("bili", []):
+                bv = bvid_of(it)
+                if not bv:
+                    continue
+                where = "对局 %s 对 %s" % (gm["date"], gm["opp"])
+                if bv in seen_gv:
+                    errs.append("视频 %s 重复挂在两局上：「%s」与「%s」" % (bv, seen_gv[bv], where))
+                seen_gv[bv] = where
         if g.get("kind") == "tour" and g.get("name") not in names:
             errs.append("视频分组「%s」对应的赛事不存在" % g.get("name"))
 
@@ -1002,6 +1121,12 @@ def build_parser():
     sp.add_argument("--group")
     add_common(sp)
     sp.set_defaults(func=cmd_add_video)
+
+    sp = sub.add_parser("del-video", help="删除视频（按 bvid 或标题片段）")
+    sp.add_argument("sel", help="bvid 或标题片段")
+    sp.add_argument("--all", action="store_true", help="匹配到多条时全删")
+    add_common(sp)
+    sp.set_defaults(func=cmd_del_video)
 
     sp = sub.add_parser("list-countdown", help="列出倒计时")
     sp.set_defaults(func=cmd_list_countdown)

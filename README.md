@@ -109,6 +109,10 @@ python tools/kejie.py add-video --bvid BV1xxxxxxxxx --title "..." --date 2026-10
 python tools/kejie.py add-video --tour 王中王 --bvid BV1xxxxxxxxx --title "..."
 python tools/kejie.py add-video --game "2026-05-25|福冈航太朗" --bvid BV1xxxxxxxxx --title "..."
 
+# 删视频（bvid 或标题片段）
+python tools/kejie.py del-video BV1xxxxxxxxx
+python tools/kejie.py del-video "王中之王2" --all
+
 # 倒计时（唯一使用未来日期的示例）
 python tools/kejie.py list-countdown
 python tools/kejie.py add-countdown "棋仙战 · 预选" 2026-11-02 --note "第 2 届世界围棋棋仙战 预选"
@@ -148,7 +152,10 @@ SGF 需是标准格式（以 `(;` 开头），工具会数一遍手数做基本�
 | 未完赛的后续 | `add-game` 自动把 `end` 往后延并重算战绩，`set-result` 收尾 |
 | 缺棋谱号 | 只警告，不影响入档；之后可补 `--id` |
 | 网棋 | `--net` 直接进「野狐网棋 · 网络对局」分组，不进赛事时间线 |
-| 视频重复 | 按 bvid 全局去重 |
+| 视频重复 | 按 bvid 全局去重；对局上的老数据只有 `url`，会从链接里反解 bvid 再比对 |
+| 视频计数 | `add-video` / `del-video` / `merge-groups` 自动重算 `bili_total`，不会和实际条数脱节 |
+| 同一视频双链接 | 既在赛事分组里、又挂到具体对局，是**有意设计**；查重只在同类容器内做，跨容器不算重复 |
+| 删视频歧义 | 同一 bvid 命中「分组 + 对局」两处时，不加 `--all` 只列候选，不会误删 |
 | 对手志 | 页面运行时从对局实时聚合，加完对局自动更新，无需额外操作 |
 
 ### tier 推断规则
