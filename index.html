@@ -545,6 +545,11 @@ footer b{color:var(--ink2);font-weight:600}
 .ohb .on{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ohb .or{color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums;font-size:12px}
 .ohb .bar{width:100%;margin-top:5px}
+.oseg{display:inline-flex;gap:4px}
+.oseg .fbtn{padding:3px 9px;font-size:11px}
+.ogrid.long{max-height:620px;overflow-y:auto;padding-right:8px}
+.ogrid.long::-webkit-scrollbar{width:6px}
+.ogrid.long::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
 .rgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 34px}
 .rgrid .rv{border-bottom:1px solid var(--line2)}
 @media(max-width:820px){.ogrid,.rgrid{grid-template-columns:1fr}}
@@ -794,7 +799,11 @@ footer b{color:var(--ink2);font-weight:600}
   <div class="two opp-two">
     <div class="card"><h3>交手最多</h3>
       <div class="otool"><span class="tiny" id="oppCount"></span>
-        <button class="fbtn" id="oppMore" type="button">显示全部</button></div>
+        <span class="oseg" id="oppSeg">
+          <button class="fbtn on" type="button" data-th="10">≥10 局</button>
+          <button class="fbtn" type="button" data-th="3">≥3 局</button>
+          <button class="fbtn" type="button" data-th="1">≥1 局</button>
+        </span></div>
       <div class="ogrid" id="opplist"></div>
     </div>
     <div class="card"><h3>按赛事级别</h3><div id="tierstat"></div>
@@ -1627,11 +1636,15 @@ function renderOpp(){
         <span class="or">${s.w}-${s.l} · ${p.toFixed(0)}%</span></div>
       <div class="bar"><i style="width:${p}%"></i></div></div>`;
   }).join('');
-  const all = opp.filter(o=>o[1].w+o[1].l>=3).length;
-  $('oppMore').style.display = OPP_TH === 3 ? 'none' : '';
-  $('oppMore').textContent = `显示全部（≥3 局，${all} 人）`;
+  // 列表过长时改为卡内滚动，避免把整页拉成几千像素
+  $('opplist').classList.toggle('long', list.length > 40);
+  document.querySelectorAll('#oppSeg .fbtn').forEach(b=>{
+    b.classList.toggle('on', +b.dataset.th === OPP_TH);
+  });
 }
-$('oppMore').onclick = ()=>{ OPP_TH = 3; renderOpp(); };
+document.querySelectorAll('#oppSeg .fbtn').forEach(b=>{
+  b.onclick = ()=>{ OPP_TH = +b.dataset.th; renderOpp(); };
+});
 renderOpp();
 $('tierstat').innerHTML = Object.entries(byTier).map(([k,v])=>{
   const t=v.w+v.l;
