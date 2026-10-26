@@ -1224,7 +1224,11 @@ function selfChips(g){
           title="潜伏激斗传 第 ${p} 期 · ${esc(QFEP[p-1])}（${esc(m[2])}）"><span class="src">潜伏</span>第 ${p} 期 · ${esc(QFEP[p-1])}</a>`);
   return own.join('') + qf.join('');
 }
-function cardHTML(t){
+function cardHTML(t, subset){
+  const G = subset || t.games;
+  const w = subset ? G.filter(g=>g.win).length : t.wins;
+  const l = subset ? G.filter(g=>!g.win && !g.void).length : t.losses;
+  const v = subset ? G.filter(g=>g.void).length : (t.voids||0);
   const net = balance(t.end) - balance(t.start);
   return `<div class="card">
     <div class="card-h">
@@ -1235,8 +1239,9 @@ function cardHTML(t){
     </div>
     <div class="meta">
       <span class="mono">${fmt(t.start)}${t.start!==t.end?' → '+fmt(t.end):''}</span>
-      <span><b>${t.wins}</b> 胜 <b>${t.losses}</b> 负${t.voids?` <b>${t.voids}</b> 无胜负`:''}</span>
-      <span>共 ${t.games.length} 局</span>
+      <span><b>${w}</b> 胜 <b>${l}</b> 负${v?` <b>${v}</b> 无胜负`:''}</span>
+      <span>共 ${G.length} 局${subset?`（全 ${t.games.length} 局）`:''}</span>
+      ${subset?`<span class="tag" style="color:#8a6a1c;border-color:var(--goldline);background:var(--goldbg)">仅看 对 ${esc(FQ)}</span>`:''}
       ${t.team?`<span class="tag blue">效力 ${esc(t.team)}</span>`:''}
       ${t.entry?`<span class="tag gold">${esc(t.entry)}</span>`:''}
       ${t.double?`<span class="tag">双败淘汰</span>`:''}
@@ -1249,11 +1254,11 @@ function cardHTML(t){
       <span>赛后 <b class="mono">${balance(t.end)}</b></span>
       <span>净变动 <b class="mono">${net>0?'+':''}${net}</b></span>
     </div>
-    <details class="gd"><summary>对局明细 · ${t.games.length} 局${(()=>{const n=t.games.filter(glId).length;return n?` · 星阵 ${n}`:''})()}</summary>
+    <details class="gd"${subset?' open':''}><summary>对局明细 · ${G.length} 局${subset?`（全 ${t.games.length} 局）`:''}${(()=>{const n=G.filter(glId).length;return n?` · 星阵 ${n}`:''})()}</summary>
       <div class="tscroll"><table class="gtable">
       <colgroup><col style="width:94px"><col style="width:200px"><col style="width:82px"><col style="width:170px"><col style="width:104px"><col style="width:62px"><col style="width:64px"><col></colgroup>
       <thead><tr><th>日期</th><th>轮次 / 阶段</th><th>柯洁</th><th>对手</th><th>结果</th><th class="r">手数</th><th class="c">棋谱</th><th>讲解</th></tr></thead>
-      <tbody>${t.games.map(g=>`<tr>
+      <tbody>${G.map(g=>`<tr>
         <td class="gdate">${fmt(g.date)}</td>
         <td class="ground">${esc(g.label.replace(t.name,'').trim()||g.label)}</td>
         <td><span class="stone ${g.color==='B'?'b':'w'}">${g.color==='B'?'执黑':'执白'}</span></td>
@@ -1270,22 +1275,34 @@ function cardHTML(t){
 
 function filtered(){
   const y = $('fyear').value, sort = $('fsort').value;
-  let list = TOURS.filter(t =>
-    (!y || t.start.slice(0,4)===y || t.end.slice(0,4)===y) &&
-    (!FT.size || FT.has(t.tier)) &&
-    (!FQ || t.name.toLowerCase().includes(FQ) || t.games.some(g=>g.opp.toLowerCase().includes(FQ)))
-  );
+  // 返回 [{t, games}]：games 为 null 表示整项赛事；否则只保留命中的那几局
+  let list = [];
+  for (const t of TOURS){
+    if (y && t.start.slice(0,4)!==y && t.end.slice(0,4)!==y) continue;
+    if (FT.size && !FT.has(t.tier)) continue;
+    if (!FQ){ list.push({t, games:null}); continue; }
+    // 命中赛事名 -> 整张卡；只命中对手 -> 只留该对手的对局
+    if (t.name.toLowerCase().includes(FQ)){ list.push({t, games:null}); continue; }
+    const gs = t.games.filter(g=>g.opp.toLowerCase().includes(FQ));
+    if (gs.length) list.push({t, games:gs});
+  }
+  const n = x => x.games ? x.games.length : x.t.games.length;
   if (sort==='endd') list = list.slice().reverse();
   else if (sort==='pt') list = list.slice().sort((a,b)=>
-    (b.awards.reduce((s,x)=>s+x.points,0)-b.cost)-(a.awards.reduce((s,x)=>s+x.points,0)-a.cost));
-  else if (sort==='cnt') list = list.slice().sort((a,b)=>b.games.length-a.games.length);
+    (b.t.awards.reduce((s,x)=>s+x.points,0)-b.t.cost)-(a.t.awards.reduce((s,x)=>s+x.points,0)-a.t.cost));
+  else if (sort==='cnt') list = list.slice().sort((a,b)=> n(b)-n(a));
   return list;
 }
 function render(){
   const list = filtered();
-  $('tcount').textContent = list.length+' 项赛事';
+  const onlyGames = list.some(x=>x.games);
+  const totalG = list.reduce((a,x)=> a + (x.games ? x.games.length : 0), 0);
+  $('tcount').textContent = onlyGames
+    ? `${list.length} 项赛事 · 命中 ${totalG} 局`
+    : `${list.length} 项赛事`;
   const slice = list.slice(0, shown);
-  $('timeline').innerHTML = slice.map(cardHTML).join('') || '<div class="card">没有符合条件的赛事。</div>';
+  $('timeline').innerHTML = slice.map(x=>cardHTML(x.t, x.games)).join('')
+    || '<div class="card">没有符合条件的赛事。</div>';
   $('moreBtn').style.display = list.length > shown ? 'block' : 'none';
   $('moreBtn').textContent = `显示更多赛事（还有 ${list.length-shown} 项）`;
 }
