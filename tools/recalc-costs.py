@@ -176,6 +176,16 @@ def main():
     for e in entries:
         e["spends"] = sorted(spends[id(e)])
     D["costs"] = sorted(out, key=lambda c: c["date"])
+
+    # 同步赛事侧字段，否则会出现「扣分表说扣了、赛事卡上写着未扣」的自相矛盾
+    by_name = {t["name"]: t for t in D.get("tours", [])}
+    for rec in out:
+        t = by_name.get(rec["tour"])
+        if not t:
+            continue
+        t["cost_asked"] = rec["need"]
+        t["cost"] = rec["need"] if rec["applied"] else 0
+        t["entry"] = "国家种子（扣参赛分）" if rec["applied"] else "余额不足门槛 · 未扣参赛分"
     payload = json.dumps(D, ensure_ascii=False, separators=(",", ":"))
     new = text[:m.start(1)] + payload + text[m.end(1):]
     import shutil
