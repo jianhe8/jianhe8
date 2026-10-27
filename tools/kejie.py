@@ -409,12 +409,14 @@ def cmd_add_game(a):
         "win": win,
         "void": void,
         "moves": a.moves or 0,
-        "id": a.id or 0,
+        "id": 0,                     # 旧数据源（弘通）编号；新对局没有，「谱」按钮看 gl
         "result": a.result_text or ("和棋" if void else ""),
         "bili": [],
     }
     t.setdefault("games", []).append(g)
     t["games"].sort(key=lambda x: x["date"])
+    if a.id:
+        doc.D.setdefault("gl", {})["%s|%s" % (d.isoformat(), a.opp)] = int(a.id)
     before = (t.get("start"), t.get("end"))
     recompute_tour(t)
 
@@ -424,8 +426,11 @@ def cmd_add_game(a):
         print("  赛期自动调整：%s ~ %s -> %s ~ %s" % (before[0], before[1], t["start"], t["end"]))
     print("  当前战绩：%d 胜 %d 负%s" % (t["wins"], t["losses"],
                                     (" %d 无胜负" % t["voids"]) if t["voids"] else ""))
-    if not g["id"]:
-        warn("未提供 --id（星阵棋谱号），该局不会出现「谱」按钮；有谱号可事后补：add-game 同参数 + --id")
+    if a.id:
+        print("  已登记 gl[\"%s|%s\"] = %d" % (d.isoformat(), a.opp, a.id))
+        print("  --id 只登记编号；棋谱本体要用 add-sgf 写进内嵌棋谱库，否则点「谱」会提示没缓存")
+    else:
+        warn("未提供 --id，该局不会出现「谱」按钮；有 SGF 的话用 add-sgf 挂上即可")
     if a.result_text == "" and not void:
         warn("未提供 --result-text（如「黑中盘胜」），对局明细会空着这一列")
     sync_group_sub(doc, t)
@@ -456,10 +461,30 @@ def cmd_del_game(a):
         sys.exit(3)
     t["games"] = keep
     recompute_tour(t)
+
+    # 删掉的局如果还挂着棋谱，把 gl 映射一起清掉，免得留下指向空气的「谱」按钮
+    gl = doc.D.get("gl") or {}
+    alive = {(tt.get("date"), gg.get("opp")) for tt in doc.tours for gg in tt.get("games", [])}
+    dropped_ids = []
+    for g in removed:
+        key = "%s|%s" % (g.get("date"), g.get("opp"))
+        if key in gl and (g.get("date"), g.get("opp")) not in alive:
+            dropped_ids.append(gl.pop(key))
+    if dropped_ids:
+        refs = {str(v) for v in gl.values()}
+        m, db = _sgf_db(doc)
+        gone = [str(i) for i in dropped_ids if str(i) not in refs and str(i) in db]
+        for i in gone:
+            del db[i]
+        if gone:
+            _sgf_put(doc, m, db)
+
     ok("已从「%s」删除 %d 局：" % (t["name"], len(removed)))
     for g in removed:
         print("  - %s 执%s  %s" % (g["date"], g.get("color"), g.get("label")))
     print("  当前战绩：%d 胜 %d 负（共 %d 局）" % (t["wins"], t["losses"], len(keep)))
+    if dropped_ids:
+        print("  顺带清掉 %d 条棋谱映射（id: %s）" % (len(dropped_ids), ", ".join(map(str, dropped_ids))))
     recount(doc.D)
     doc.save(dry=a.dry_run, backup=not a.no_backup, note="del-game")
 
@@ -814,7 +839,6 @@ def cmd_add_sgf(a):
     size = _sgf_put(doc, m, db)
 
     doc.D.setdefault("gl", {})[key] = int(gid)
-    g["id"] = int(gid)
 
     ok("%s 对 %s：已挂棋谱 id=%s（%d 手，%d 字符）" % (g["date"], g["opp"], gid, nmv, len(sgf)))
     print("  棋谱库 %d 局，压缩后 base64 %.0f KB" % (len(db), size / 1024))

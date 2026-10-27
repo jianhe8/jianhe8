@@ -299,10 +299,18 @@ input[type=text]{min-width:190px}
 .more:hover{border-color:var(--gold2);color:var(--ink);background:#fdfbf6}
 
 /* ---------- KPI ---------- */
-.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:0;margin-bottom:18px;
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0;margin-bottom:18px;
   border-top:1px solid var(--ink);border-bottom:1px solid var(--line)}
-.kpi .box{background:none;border:0;border-right:1px solid var(--line2);border-radius:0;padding:12px 16px 12px 0;margin-right:16px}
+.kpi .box{background:none;border:0;border-right:1px solid var(--line2);border-radius:0;padding:12px 16px 12px 0;margin-right:16px;min-width:0}
 .kpi .box:last-child{border-right:0;margin-right:0}
+/* 窄屏固定列数，免得最后一项单独掉到下一行 */
+@media(max-width:1060px){
+  .kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi.six{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kpi .box{border-right:0;border-bottom:1px solid var(--line2);margin-right:0;padding:11px 14px 11px 0}
+  .kpi .box:nth-last-child(-n+2){border-bottom:0}
+  .kpi.six .box:nth-last-child(-n+3){border-bottom:0}
+}
 .kpi .k{font-size:11.5px;color:var(--ink3)}
 .kpi .v{font-size:19px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums}
 .kpi .v.big{font-size:30px}
@@ -625,11 +633,11 @@ footer b{color:var(--ink2);font-weight:600}
         <h1><span class="tick"></span><span class="nm">柯洁</span></h1>
         <div class="tb-bottom">
           <span class="tb-sub">围棋九段 · 8(9) 冠</span>
-          <span class="tb-meta">2014 — 2026</span>
+          <span class="tb-meta">2008 — 2026</span>
         </div>
         <div class="tb-lede">
           <p>柯洁，1997 年生于浙江丽水，中国围棋九段。2015 年 1 月，17 岁的他在第 2 届百灵杯决赛中击败邱峻，拿下首个世界冠军，是当时中国最年轻的世界冠军；此后五年在百灵杯、三星杯、梦百合杯、新奥杯之间连下八城——<b>三星杯四冠</b>、<b>百灵杯两冠</b>，梦百合杯与新奥杯各一冠——并创下<b>世界最年轻 3、4、5、6、7 冠王</b>、<b>中国最年轻 3、4、5、6、7、8、(9) 冠王</b>的纪录。2015 年起长期占据世界排名第一，被视为 AlphaGo 出现之前人类棋坛的最后一道防线。</p>
-          <p>2024 年下半年状态回暖，围甲后半程连战连捷，并在第 29 届 LG 杯连胜韩相朝、元晟溱闯入决赛；2025 年 1 月决赛首局执黑 2.5 目先下一城，次局却因两次提子未放在棋盒盖上被判负，决胜局退赛，中方不承认该结果——也就是棋迷口中的「黑哨」，第九冠因此悬而未决，本档统一记作 <b>8(9) 冠</b>。2025 年 9 月，他在第 6 届中国棋圣战复出即夺冠；2026 年 7 月再夺第 6 届王中王争霸赛冠军。</p>
+          <p>2024 年下半年状态回暖，围甲后半程连战连捷，并在第 29 届 LG 杯连胜韩相朝、元晟溱闯入决赛；2025 年 1 月决赛首局执黑 2.5 目先下一城，次局却因两次提子未放在棋盒盖上被判负，决胜局退赛，中方不承认该结果——也就是棋迷口中的「黑哨」，第九冠因此悬而未决，本档统一记作 <b>8(9) 冠</b>。2025 年 9 月，他在第 6 届中国棋圣战复出即夺冠；2026 年 7 月再夺第 6 届王中王争霸赛冠军（邀请赛，不计马氏积分）。</p>
           <p class="tb-note">本站收录他 2008 年至今 <b id="ledeTours">—</b> 项赛事、<b id="ledeGames">—</b> 局可核对的正式对局，每一局的对手、执色、手数与结果都逐条对过棋谱。</p>
         </div>
       </div>
@@ -712,7 +720,7 @@ footer b{color:var(--ink2);font-weight:600}
   <div class="sect-h"><h2>8(9) 个世界冠军</h2><span class="sub">按夺冠时间排序 · 决赛比分与对手 · 第 9 冠（第 29 届 LG 杯）因争议判负、中方不承认，未计入</span></div>
   <div class="champs" id="champs"></div>
 
-  <div class="kpi" id="tlkpi"></div>
+  <div class="kpi six" id="tlkpi"></div>
 
   <div class="toolbar">
     <select id="fyear"><option value="">全部年份</option></select>
@@ -787,7 +795,7 @@ footer b{color:var(--ink2);font-weight:600}
     <h3>已知差异与待核实</h3>
     <table class="calib">
       <tr><th>项目</th><th>处理</th></tr>
-      <tr><td>2026 年公开版本写「世界冠军 360 分」，与 2018 年流传的条例文本「365 分」不一致，改动时间不详</td><td>柯洁 8 个世界冠军均在 2015–2020，按<b>当时文本 365</b> 计。2026 年的三个官方实例都是 0 分起点，360 / 365 都能对上，无法据此反推。实测改用 360 的影响：历史峰值 1513 → 1493，2021 年末余额少 5 分，2022-06-27 起两条曲线完全重合（2023 年初都归 0）</td></tr>
+      <tr><td>2026 年公开版本写「世界冠军 360 分」，与 2018 年流传的条例文本「365 分」不一致，改动时间不详</td><td>柯洁 8 个世界冠军均在 2015–2020，按<b>当时文本 365</b> 计。2026 年的三个官方实例都是 0 分起点，360 / 365 都能对上，无法据此反推。实测改用 360 的影响：历史峰值 1513 → 1493，2021 年末余额少 5 分，2022-11-08 起两条曲线完全重合（2023 年初都归 0）</td></tr>
       <tr><td>第 13 届春兰杯未进行三、四名战（第 11、12 届都下过），四强怎么算</td><td>按<b>并列第三 90 分</b>计（与 LG / 应氏并列第三同档）；若按「第四名」则为 45 分，差 45 分</td></tr>
       <tr><td>联赛总胜率第一 60 分（总盘数 ≥16 局）</td><td>2015 / 2016 是否为总胜率第一未有权威榜单佐证，<b>暂不计</b>，仅计主将胜率榜 90 分</td></tr>
       <tr><td>「正赛胜申真谞 +30」条款</td><td>2023 年后新增，柯洁 7 胜均在 2017—2020，<b>记 0 分</b></td></tr>
@@ -1549,7 +1557,6 @@ $('costtab').insertAdjacentHTML('beforeend', COSTS.map(c=>`
   <td>${c.applied ? '<span class="ok">扣</span>' : '<span class="tiny">不扣 —— 余额不足门槛，走预选 / 选拔</span>'}</td></tr>`).join(''));
 
 /* ---------- 校验 ---------- */
-const VS = D.verify_summary || {};
 const VSUM = (()=>{
   let checks=0, pass=0, fail=0, warn=0, tF=0, tW=0;
   for (const t of TOURS){
