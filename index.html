@@ -545,22 +545,43 @@ footer b{color:var(--ink2);font-weight:600}
   justify-content:center;z-index:98;padding:22px}
 .pathmodal.on{display:flex}
 .pathbox{background:var(--card);border:1px solid var(--goldline);border-radius:0;
-  width:100%;max-width:620px;max-height:84vh;overflow:auto;padding:22px 24px;}
+  width:100%;max-width:760px;max-height:84vh;overflow:auto;padding:22px 24px;}
   
 .pathbox h4{margin:0;font-size:16px;font-weight:650;letter-spacing:.02em}
 .pathbox .psub{font-size:12px;color:var(--ink3);margin:5px 0 15px}
-.prow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line2);
+.prow{display:grid;grid-template-columns:118px minmax(0,1fr) 24px 44px 30px 170px;
+  align-items:center;column-gap:10px;padding:8px 0;border-top:1px solid var(--line2);
   font-size:12.5px;color:var(--ink2)}
 .prow:first-of-type{border-top:none}
-.prow .pr{flex:none;width:126px;color:var(--ink3);font-size:11.5px;
+.prow .pr{color:var(--ink3);font-size:11.5px;min-width:0;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.prow .pn{flex:1 1 auto;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.prow .pc{flex:none;width:24px;text-align:center;color:var(--ink3);font-size:11px}
-.prow .pw{flex:none;width:46px;text-align:right;font-weight:600}
+.prow .pn{min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow .pc{text-align:center;color:var(--ink3);font-size:11px}
+.prow .pw{text-align:right;font-weight:600}
 .prow .pw.w{color:var(--red)}
 .prow .pw.l{color:var(--green)}
-.prow .pg{flex:none;width:30px;text-align:right}
+.prow .pg{text-align:right}
 .pathclose{margin-top:16px;text-align:right}
+/* 夺冠之路里每行的「讲解」列，和外面明细表同序：谱 → 讲 */
+.prow .pb{min-width:0;display:flex;flex-wrap:wrap;gap:3px 6px;justify-content:flex-end}
+a.pblk{font-size:11px;line-height:1.7;padding:0 6px;border:1px solid var(--line);color:var(--ink2);
+  text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+a.pblk::before{content:"▶";font-size:8px;color:#c96a63;margin-right:5px;vertical-align:1px}
+a.pblk:hover{border-color:var(--goldline2);color:var(--blue);text-decoration:none}
+/* 窄屏：轮次单独一行，讲解另起一行，免得挤成一团 */
+@media(max-width:640px){
+  .prow{grid-template-columns:minmax(0,1fr) 24px 44px 30px;
+    grid-template-areas:"lab lab lab lab" "pn pc pw pg" "pb pb pb pb";row-gap:3px}
+  .prow .pr{grid-area:lab;white-space:normal;font-size:11px}
+  .prow .pn{grid-area:pn}
+  .prow .pc{grid-area:pc}
+  .prow .pw{grid-area:pw}
+  .prow .pg{grid-area:pg}
+  .prow .pb{grid-area:pb;justify-content:flex-start}
+}
+.pvhead{display:flex;align-items:center;gap:10px;margin:18px 0 8px;font-size:11px;
+  letter-spacing:.14em;color:var(--ink3)}
+.pvhead::after{content:"";flex:1;height:1px;background:var(--line2)}
 .champ{cursor:pointer}
 #yearstat tr.sum td{border-top:1px solid var(--line);font-weight:650;color:var(--ink);background:var(--paper2)}
 
@@ -1180,7 +1201,10 @@ $('headstats').innerHTML = [
 ].concat(totalV ? [['无胜负', totalV, '局']] : []).map(([k,v,u])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:''}</div></div>`).join('');
 
 /* ---------- 冠军条 ---------- */
-const champTours = TOURS.filter(t=>t.result==='冠军'&&t.tier==='世界大赛');
+// 按「夺冠那天」排，不是按赛事开赛日 —— 否则跨年的杯赛会插错位置
+const wonAt = t => (t.awards[0] && t.awards[0].date) || t.end;
+const champTours = TOURS.filter(t=>t.result==='冠军'&&t.tier==='世界大赛')
+  .sort((a,b)=> wonAt(a) < wonAt(b) ? -1 : wonAt(a) > wonAt(b) ? 1 : 0);
 const lg29 = TOURS.find(t => /第29届LG杯朝鲜日报棋王战/.test(t.name));
 $('champs').innerHTML = champTours.map((t,i)=>{
   const fin = t.games.filter(g=>/决赛/.test(g.label) && !/半决赛/.test(g.label));
@@ -1225,11 +1249,19 @@ function openPath(t, title, sub){
       <span class="pc">${g.color==='B'?'黑':'白'}</span>
       <span class="pw ${cls}">${txt}</span>
       <span class="pg">${gid?`<button class="gsgf" data-gid="${gid}" data-title="${esc(t.name)} · ${fmt(g.date)} 对${esc(g.opp)}" title="看棋谱">谱</button>`:''}</span>
+      <span class="pb">${(g.bili||[]).map(v=>`<a class="pblk" href="${esc(v.url||'')}" target="_blank" rel="noopener" title="${esc(v.title||'')}">${esc(v.title||'')}</a>`).join('')}</span>
     </div>`;
   }).join('');
+  // 赛事级讲解（没定位到具体对局的）单独列在下面，跟外层「该赛事其他讲解」一个意思
+  const rest = t.bili_rest || [];
+  const nv = t.games.reduce((a,g)=>a+((g.bili||[]).length),0) + rest.length;
+  const vhtml = rest.length ? `
+    <div class="pvhead">赛事其他讲解 · ${rest.length} 条</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px">${rest.map(v=>
+      `<a class="pblk" href="${esc(v.url||'')}" target="_blank" rel="noopener" title="${esc(v.title||'')}">${esc(v.title||'')}</a>`).join('')}</div>` : '';
   $('pathTitle').textContent = title;
-  $('pathSub').textContent = sub;
-  $('pathBody').innerHTML = rows || '<div class="tiny">没有对局记录</div>';
+  $('pathSub').textContent = sub + (nv ? ` · 讲解 ${nv} 条` : '');
+  $('pathBody').innerHTML = (rows || '<div class="tiny">没有对局记录</div>') + vhtml;
   $('pathModal').classList.add('on');
 }
 $('pathClose').onclick = () => $('pathModal').classList.remove('on');
@@ -1428,6 +1460,25 @@ function buildSeries(){
 }
 const X = d => PAD.l + (d-D0)/(D1-D0)*(CW-PAD.l-PAD.r);
 const Y = v => PAD.t + (ymax-v)/(ymax-ymin)*(CH-PAD.t-PAD.b);
+// 曲线跟着配色走：--gold 可能是 hex，也可能是配色面板算出来的 hsl()
+function accentColor(){
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim();
+  return v || '#96731f';
+}
+function withAlpha(c, a){
+  c = String(c).trim();
+  if (c[0] === '#'){
+    let h = c.slice(1);
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    if (!isNaN(r)) return `rgba(${r},${g},${b},${a})`;
+  }
+  let m = c.match(/hsla?\(\s*([\d.]+)[,\s]+([\d.]+)%[,\s]+([\d.]+)%/);
+  if (m) return `hsla(${m[1]},${m[2]}%,${m[3]}%,${a})`;
+  m = c.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+  if (m) return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
+  return c;
+}
 function draw(){
   if (!CW) return;
   ctx.clearRect(0,0,CW,CH);
@@ -1445,8 +1496,9 @@ function draw(){
     ctx.fillStyle='#9c968b'; ctx.textAlign='center'; ctx.fillText(y, x, CH-PAD.b+18);
   }
   // 面积
+  const acc = accentColor();
   const grad = ctx.createLinearGradient(0,PAD.t,0,CH-PAD.b);
-  grad.addColorStop(0,'rgba(179,137,47,.20)'); grad.addColorStop(1,'rgba(179,137,47,.02)');
+  grad.addColorStop(0, withAlpha(acc,.20)); grad.addColorStop(1, withAlpha(acc,.02));
   ctx.beginPath();
   series.forEach(([d,v],i)=>{ const x=X(d), y=Y(v); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
   ctx.lineTo(X(series[series.length-1][0]), Y(Math.max(0,ymin))); ctx.lineTo(X(series[0][0]), Y(Math.max(0,ymin)));
@@ -1454,7 +1506,7 @@ function draw(){
   // 线
   ctx.beginPath();
   series.forEach(([d,v],i)=>{ const x=X(d), y=Y(v); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
-  ctx.strokeStyle='#b3892f'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+  ctx.strokeStyle=acc; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
   // 冠军点
   for (const t of champTours){
     const x=X(dnum(t.end)), y=Y(balance(t.end));
@@ -1469,6 +1521,7 @@ function resize(){
   ctx.setTransform(dpr,0,0,dpr,0,0); CW = w; draw();
 }
 buildSeries();
+window.__curveRedraw = () => { if (CW) draw(); };
 window.addEventListener('resize', ()=>{ if ($('p-curve').classList.contains('on')) resize(); });
 resize();
 
@@ -2131,6 +2184,7 @@ document.addEventListener('click', e => {
     var v = varsFor(st.a, st.p);
     for(var k in v) root.style.setProperty(k, v[k]);
     mark();
+    if(window.__curveRedraw) window.__curveRedraw();   // 曲线用 canvas 画，得手动重绘
   }
   function save(){
     try{ localStorage.setItem(KEY, JSON.stringify({a:st.a, p:st.p, vars:varsFor(st.a, st.p)})); }catch(e){}
