@@ -596,17 +596,34 @@ def cmd_add_video(a):
     bvid = a.bvid.strip()
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         warn("bvid 格式不像标准 BV 号：%s" % bvid)
-    # 全局去重（对局上的老数据没有 bvid 字段，靠 url 反解）
-    for g in doc.groups:
-        for it in g.get("items", []):
-            if bvid_of(it) == bvid:
-                die("该视频已在分组「%s」里：%s" % (g["name"], it.get("title", "")))
-    for t in doc.tours:
-        for gm in t.get("games", []):
-            for it in gm.get("bili", []):
-                if bvid_of(it) == bvid:
-                    die("该视频已挂在对局 %s 对 %s 上：%s"
-                        % (gm["date"], gm["opp"], it.get("title", "")))
+    # 去重按容器类型分开：同一个 bvid 允许「既在赛事分组、又挂到具体对局」（双链接），
+    # 但同一类型里不能出现两次。
+    def _in_group(bv):
+        for g in doc.groups:
+            for it in g.get("items", []):
+                if bvid_of(it) == bv:
+                    return g["name"], it
+        return None
+    def _in_game(bv):
+        for t in doc.tours:
+            for gm in t.get("games", []):
+                for it in gm.get("bili", []):
+                    if bvid_of(it) == bv:
+                        return (t["name"], gm), it
+        return None
+    hit_g, hit_m = _in_group(bvid), _in_game(bvid)
+    if a.game and hit_m:
+        (tn, gm), it = hit_m
+        die("这条视频已经挂在对局 %s 对 %s（%s）上了：%s"
+            % (gm["date"], gm["opp"], tn, it.get("title", "")))
+    if not a.game and hit_g:
+        die("该视频已在分组「%s」里：%s" % (hit_g[0], hit_g[1].get("title", "")))
+    if a.game and hit_g:
+        print("  这条视频已在分组「%s」里，这次同时挂到对局（双链接）" % hit_g[0])
+    if not a.game and hit_m:
+        (tn, gm), _it = hit_m
+        print("  这条视频已挂在对局 %s 对 %s（%s）上，这次同时进分组（双链接）"
+              % (gm["date"], gm["opp"], tn))
 
     item = {
         "bvid": bvid,
